@@ -26,8 +26,8 @@ do
     m) maintain_ip='on' ;;
     n) newhostname=$OPTARG ;;
     p) puppetmaster=$OPTARG ;;
-    r) ns1=$OPTARG
-    s) ns2=$OPTARG
+    r) ns1=$OPTARG ;;
+    s) ns2=$OPTARG ;;
     *) banner ;;
   esac
 done
