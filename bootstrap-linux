@@ -1,61 +1,218 @@
 #!/bin/bash
-# Bootstrap an Ubuntu 12.04 machine.
+# Bootstraps a Linux machine for an initial Puppet run.
+# Supports CentOS 5 and Ubuntu 12.04.
+# Handles configuration of up to two IP addresses
 #
-# - Set hostname
-# - Add domain name to DNS search path via /etc/network/interfaces
-# - Update packages
-# - Install Puppet agent.
-# - Install prereqs for additional configuration
+# ./bootstrap-linux -n hostname -f eth0_IP [-b eth1_IP]
+#
 
-function usage {
-    echo "Usage: $0 -n fqdn"
-    echo "Usage: $0 -h"
-    exit 1
+function banner {
+  echo "Usage: $0 [-m] -n fqdn -f eth0_IP [-b eth1_IP] [-p puppetmaster] [-r ns1] [-s ns2]"
+  echo "Usage: $0 [-m] -n fqdn -d [-p puppetmaster]"
+  echo "Usage: $0 -h"
+  exit 1
 }
 
-while getopts "hn:" flag
+# Parse options:
+ns2=''
+eth1_ip=''
+maintain_ip='off'
+while getopts "hdmp:n:f:b:" flag
 do
-    case $flag in
-	n) fqdn=$OPTARG ;;
-	*) usage ;;
-    esac
+  case $flag in
+    b) eth1_ip=$OPTARG ;;
+    d) dhcp='on' ;;
+    f) eth0_ip=$OPTARG ;;
+    m) maintain_ip='on' ;;
+    n) newhostname=$OPTARG ;;
+    p) puppetmaster=$OPTARG ;;
+    r) ns1=$OPTARG
+    s) ns2=$OPTARG
+    *) banner ;;
+  esac
 done
 
-# Fqdn is a required argument:
-if [ -z $fqdn ] ; then
-    echo "Please set a fully-qualified domain name."
-    echo
-    usage
+distro=$(cat /etc/issue | head -1 | cut -f1 -d " ")
+
+# Check required arguments:
+if [ -z $newhostname ] ; then
+  echo "Please enter a fully-qualified domain name."
+  echo
+  banner
 fi
 
-# Set hostname, by removing domain from fqdn:
-echo "${fqdn}" | sed 's/\..*$//' > /etc/hostname
-/usr/sbin/service hostname start
+if [ -z "$eth0_ip" -a -z "$dhcp" ] ; then
+  echo "Please enter a front-channel IP address or choose -d to enable DHCP."
+  echo
+  banner
+fi
 
-# Assume the host has its network configured using DHCP, and only one 
-# interface:
+if [ `id -u` -ne 0 ] ; then
+  echo "Re-run this script as root - this script modifies key system files."
+  exit 1
+fi
+
+if [ $distro -eq 'Ubuntu' -a -z "$ns1" -a -z "$dhcp" ] ; then
+  echo "Primary nameserver required on Ubuntu with static IP addressing."
+  exit 1
+fi
+
+# We're assuming that the netmask is 255.255.255.0.
+
+netmask="255.255.255.0"
+
+eth0_network=$(echo $eth0_ip | sed 's/\.[0-9]*$/.0/')
+eth0_broadcast=$(echo $eth0_ip | sed 's/\.[0-9]*$/.255/')
+eth0_gateway=$(echo $eth0_ip | sed 's/\.[0-9]*$/.1/')
+
+eth1_network=$(echo $eth1_ip | sed 's/\.[0-9]*$/.0/')
+eth1_broadcast=$(echo $eth1_ip | sed 's/\.[0-9]*$/.255/')
+
+# Do distro specific actions:
+
+case $distro in
+CentOS)
+
+hostname $newhostname
+
+# Write /etc/sysconfig/network.
+
+cat > /etc/sysconfig/network <<EOF
+NETWORKING=yes
+NETWORKING_IPV6=yes
+HOSTNAME=${newhostname}
+GATEWAY=${eth0_gateway}
+EOF
+
+# Write /etc/sysconfig/network-scripts/ifcfg-eth0.
+if [ $dhcp == 'on' ]; then
+cat > /etc/sysconfig/network-scripts/ifcfg-eth0 <<EOF
+DEVICE=eth0
+BOOTPROTO=dhcp
+ONBOOT=yes
+EOF
+else
+cat > /etc/sysconfig/network-scripts/ifcfg-eth0 <<EOF
+DEVICE=eth0
+BOOTPROTO=static
+IPADDR=${eth0_ip}
+NETMASK=${netmask}
+ONBOOT=yes
+EOF
+fi
+
+if [[ ${eth1_ip} != "" ]] ; then
+cat > /etc/sysconfig/network-scripts/ifcfg-eth1 <<EOF
+DEVICE=eth1
+BOOTPROTO=static
+IPADDR=${eth1_ip}
+NETMASK=${netmask}
+ONBOOT=yes
+EOF
+fi
+
+if [ $maintain_ip == 'off' ]; then
+    /etc/init.d/network restart
+fi
+
+# Install Puppet agent:
+/bin/rpm -ivh http://yum.puppetlabs.com/el/5/products/i386/puppetlabs-release-5-6.noarch.rpm
+/usr/bin/yum -y install puppet
+
+;;
+Ubuntu)
+
 domain=`echo ${fqdn} | sed 's/^[^.]*\.//'`
+
+if [ $dhcp == 'on' ]; then
 cat > /etc/network/interfaces <<EOF
 auto lo eth0
 iface lo inet loopback
 
 iface eth0 inet dhcp
-  dns-domain $domain
+  dns-search ${domain}
+  dns-domain ${domain}
 EOF
-/usr/sbin/service networking restart
+else
+cat > /etc/network/interfaces <<EOF
+# This file describes the network interfaces available on your system
+# and how to activate them. For more information, see interfaces(5).
 
-# Add puppet repo:
-/usr/bin/curl -L -o /tmp/puppetlabs-release-precise.deb http://apt.puppetlabs.com/puppetlabs-release-precise.deb
+# The loopback network interface
+auto lo
+iface lo inet loopback
+
+# The primary network interface
+auto eth0
+iface eth0 inet static
+  address ${eth0_ip}
+  netmask ${netmask}
+  network ${eth0_network}
+  broadcast ${eth0_broadcast}
+  gateway ${eth0_gateway}
+  dns-nameservers ${ns1} ${ns2}
+  dns-search ${domain}
+  dns-domain ${domain}
+EOF
+fi
+
+if [[ $eth1_ip != "" ]] ; then
+  cat >> /etc/network/interfaces <<EOF
+
+auto eth1
+iface eth1 inet static
+  address ${eth1_ip}
+  netmask ${netmask}
+  network ${eth1_network}
+  broadcast ${eth1_broadcast}
+EOF
+fi
+
+echo "${newhostname}" | sed '/\..*$//' > /etc/hostname
+/usr/sbin/service hostname start
+
+if [ $maintain_ip == 'off' ]; then
+    /usr/bin/killall dhclient3
+    /etc/init.d/hostname restart
+    /etc/init.d/networking restart
+fi
+
+# Install puppet agent:
+/usr/bin/wget -O /tmp/puppetlabs-release-precise.deb http://apt.puppetlabs.com/puppetlabs-release-precise.deb
 /usr/bin/dpkg -i /tmp/puppetlabs-release-precise.deb
-
-# Update installed packages:
 /usr/bin/apt-get update
-/usr/bin/apt-get -y dist-upgrade
-
-# Add puppet agent:
 /usr/bin/apt-get -y install puppet
 
-# Add additional packages:
+# Install additional packages:
 /usr/bin/apt-get -y install git
 
-echo "Bootstrap complete."
+;;
+*)
+
+echo "Distribution not supported - update script to support the distro you want to bootstrap."
+exit 1
+
+;;
+esac
+
+if [ ! -z "$puppetmaster" ] ; then
+    cat > /etc/puppet/puppet.conf <<EOF
+[main]
+logdir=/var/log/puppet
+vardir=/var/lib/puppet
+ssldir=/var/lib/puppet/ssl
+rundir=/var/run/puppet
+factpath=\$vardir/lib/facter
+templatedir=\$confdir/templates
+server = $puppetmaster
+
+[master]
+# These are needed when the puppetmaster is run by passenger
+# and can safely be removed if webrick is used.
+ssl_client_header = SSL_CLIENT_S_DN 
+ssl_client_verify_header = SSL_CLIENT_VERIFY
+
+EOF
+fi
+
+echo "All done!"
