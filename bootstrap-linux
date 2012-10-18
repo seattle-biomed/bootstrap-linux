@@ -69,6 +69,15 @@ eth0_gateway=$(echo $eth0_ip | sed 's/\.[0-9]*$/.1/')
 eth1_network=$(echo $eth1_ip | sed 's/\.[0-9]*$/.0/')
 eth1_broadcast=$(echo $eth1_ip | sed 's/\.[0-9]*$/.255/')
 
+# Ping test gateway to check connectivity if not using DHCP:
+if [ -z "$dhcp" ]; then
+  /bin/ping -c 1 $eth0_gateway 2>&1 > /dev/null
+  if [ $? -ne 0 ] ; then
+    echo "Cannot ping default gateway - is system connected to incorrect VLAN?"
+    exit 1
+  fi
+fi
+
 # Do distro specific actions:
 
 case $distro in
