@@ -13,6 +13,7 @@ function banner {
   exit 1
 }
 
+(
 # Parse options:
 ns2=''
 eth1_ip=''
@@ -216,3 +217,4 @@ EOF
 fi
 
 echo "All done!"
+) 2>&1 | /usr/bin/tee /root/bootstrap-linux.log
