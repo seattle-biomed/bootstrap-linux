@@ -7,7 +7,7 @@
 #
 
 function banner {
-  echo "Usage: $0 [-m] -n fqdn -f eth0_IP [-b eth1_IP] [-p puppetmaster] [-r ns1] [-s ns2]"
+ echo "Usage: $0 [-m] -n fqdn -f eth0_IP [-b eth1_IP] [-p puppetmaster] -r ns1 [-s ns2]"
   echo "Usage: $0 [-m] -n fqdn -d [-p puppetmaster]"
   echo "Usage: $0 -h"
   exit 1
