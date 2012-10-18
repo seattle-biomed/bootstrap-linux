@@ -169,7 +169,7 @@ iface eth1 inet static
 EOF
 fi
 
-echo "${newhostname}" | sed '/\..*$//' > /etc/hostname
+echo "${newhostname}" | sed 's/\..*$//' > /etc/hostname
 /usr/sbin/service hostname start
 
 if [ $maintain_ip == 'off' ]; then
