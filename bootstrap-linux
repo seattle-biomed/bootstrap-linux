@@ -18,7 +18,7 @@ function banner {
 ns2=''
 eth1_ip=''
 maintain_ip='off'
-while getopts "hdmp:n:f:b:" flag
+while getopts "hdmp:n:f:b:r:s:" flag
 do
   case $flag in
     b) eth1_ip=$OPTARG ;;
