@@ -132,7 +132,7 @@ fi
 ;;
 Ubuntu)
 
-domain=`echo ${fqdn} | sed 's/^[^.]*\.//'`
+domain=`echo ${newhostname} | sed 's/^[^.]*\.//'`
 
 if [ $dhcp == 'on' ]; then
 cat > /etc/network/interfaces <<EOF
