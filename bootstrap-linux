@@ -179,13 +179,13 @@ EOF
 fi
 
 echo "${newhostname}" | sed 's/\..*$//' > /etc/hostname
-/usr/sbin/service hostname start
 
 if [ $maintain_ip == 'off' ]; then
     /usr/bin/killall dhclient3
-    /etc/init.d/hostname restart
     /etc/init.d/networking restart
 fi
+
+/bin/hostname -F /etc/hostname
 
 # Install puppet agent:
 /usr/bin/wget -O /tmp/puppetlabs-release-precise.deb http://apt.puppetlabs.com/puppetlabs-release-precise.deb
