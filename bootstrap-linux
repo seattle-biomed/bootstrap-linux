@@ -2,9 +2,6 @@
 # Bootstraps a Linux machine for an initial Puppet run.
 # Supports CentOS 5 and Ubuntu 12.04.
 # Handles configuration of up to two IP addresses
-#
-# ./bootstrap-linux -n hostname -f eth0_IP [-b eth1_IP]
-#
 
 function banner {
  echo "Usage: $0 [-m] -n fqdn -f eth0_IP [-b eth1_IP] [-p puppetmaster] -r ns1 [-s ns2]"
