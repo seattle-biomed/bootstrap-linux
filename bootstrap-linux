@@ -55,7 +55,8 @@ if [ $distro == 'Ubuntu' -a -z "$ns1" -a -z "$dhcp" ] ; then
   exit 1
 fi
 
-# We're assuming that the netmask is 255.255.255.0.
+# We're assuming that the netmask is 255.255.255.0 and the last octet of the
+# gateway is .1.
 
 netmask="255.255.255.0"
 
@@ -68,6 +69,7 @@ eth1_broadcast=$(echo $eth1_ip | sed 's/\.[0-9]*$/.255/')
 
 # Ping test gateway to check connectivity if not using DHCP:
 if [ -z "$dhcp" ]; then
+  /sbin/ifconfig eth0 inet $eth0_ip netmask 0xffffff00 up
   /bin/ping -c 1 $eth0_gateway 2>&1 > /dev/null
   if [ $? -ne 0 ] ; then
     echo "Cannot ping default gateway - is system connected to incorrect VLAN?"
