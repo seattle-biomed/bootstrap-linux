@@ -190,6 +190,7 @@ fi
 /usr/bin/wget -O /tmp/puppetlabs-release-precise.deb http://apt.puppetlabs.com/puppetlabs-release-precise.deb
 /usr/bin/dpkg -i /tmp/puppetlabs-release-precise.deb
 /usr/bin/apt-get update
+/usr/bin/apt-get -y dist-upgrade
 /usr/bin/apt-get -y install puppet
 
 # Install additional packages:
