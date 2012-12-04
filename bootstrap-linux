@@ -22,7 +22,7 @@ do
     d) dhcp='on' ;;
     f) eth0_ip=$OPTARG ;;
     m) maintain_ip='on' ;;
-    n) newhostname=$OPTARG ;;
+    n) fqdn=$OPTARG ;;
     p) puppetmaster=$OPTARG ;;
     r) ns1=$OPTARG ;;
     s) ns2=$OPTARG ;;
@@ -31,9 +31,10 @@ do
 done
 
 distro=$(cat /etc/issue | head -1 | cut -f1 -d " ")
+hostname=$($fqdn | sed 's/\..*$//')
 
 # Check required arguments:
-if [ -z $newhostname ] ; then
+if [ -z $fqdn ] ; then
   echo "Please enter a fully-qualified domain name."
   echo
   banner
@@ -82,14 +83,14 @@ fi
 case $distro in
 CentOS)
 
-hostname $newhostname
+hostname $fqdn
 
 # Write /etc/sysconfig/network.
 
 cat > /etc/sysconfig/network <<EOF
 NETWORKING=yes
 NETWORKING_IPV6=yes
-HOSTNAME=${newhostname}
+HOSTNAME=${fqdn}
 GATEWAY=${eth0_gateway}
 EOF
 
@@ -131,7 +132,7 @@ fi
 ;;
 Ubuntu)
 
-domain=`echo ${newhostname} | sed 's/^[^.]*\.//'`
+domain=`echo ${fqdn} | sed 's/^[^.]*\.//'`
 
 if [ $dhcp == 'on' ]; then
 cat > /etc/network/interfaces <<EOF
@@ -177,7 +178,7 @@ iface eth1 inet static
 EOF
 fi
 
-echo "${newhostname}" | sed 's/\..*$//' > /etc/hostname
+echo $hostname > /etc/hostname
 
 if [ $maintain_ip == 'off' ]; then
     /usr/bin/killall dhclient3
@@ -224,6 +225,13 @@ ssl_client_verify_header = SSL_CLIENT_VERIFY
 
 EOF
 fi
+
+# Update /etc/hosts:
+hosts_tmp=$(mktemp)
+chmod 644 $hosts_tmp
+echo "127.0.1.1 ${fqdn} ${hostname}" > $hosts_tmp
+grep -v 127.0.1.1 /etc/hosts >> $hosts_tmp
+mv $hosts_tmp /etc/hosts
 
 echo "All done!"
 ) 2>&1 | /usr/bin/tee /root/bootstrap-linux.log
