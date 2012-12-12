@@ -36,7 +36,7 @@ do
 done
 
 distro=$(cat /etc/issue | head -1 | cut -f1 -d " ")
-hostname=$($fqdn | sed 's/\..*$//')
+hostname=$(echo ${fqdn} | sed 's/\..*$//')
 
 # Check required arguments:
 if [ -z $fqdn ] ; then
