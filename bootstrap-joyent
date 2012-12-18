@@ -27,7 +27,7 @@ fi
 
 # Check if non-default puppetmaster value set:
 if [ -z "$puppetmaster" ] ; then
-    $puppetmaster='puppet.int.hurricane-ridge.com'
+    $puppetmaster='puppet.sbri.org'
 fi
 
 /opt/local/bin/pkgin up
