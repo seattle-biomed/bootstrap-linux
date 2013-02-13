@@ -51,7 +51,7 @@ su -l git -c "rbenv shell $RUBY_VERS && gem install librarian-puppet --no-ri --n
 /bin/chown git:git /srv/git
 
 cd /tmp # Need to be in a directory that user "git" can access
-su git -c "/usr/bin/git clone --bare git://github.com/anl/etc-puppet.git \
+su git -c "/usr/bin/git clone --bare git://github.com/seattle-biomed/etc-puppet.git \
     /srv/git/puppet.git"
 
 cat > /srv/git/puppet.git/hooks/post-receive <<EOF
@@ -90,7 +90,7 @@ fi
 /bin/chown git:git /etc/puppet
 /bin/chmod 755 /etc/puppet
 
-su git -c "/usr/bin/git clone git://github.com/anl/etc-puppet.git /etc/puppet"
+su git -c "/usr/bin/git clone git://github.com/seattle-biomed/etc-puppet.git /etc/puppet"
 su -l git -c "cd /etc/puppet; rbenv local $RUBY_VERS"
 su -l git -c "cd /etc/puppet; librarian-puppet update"
 
