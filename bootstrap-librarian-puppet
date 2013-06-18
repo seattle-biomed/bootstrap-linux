@@ -11,6 +11,14 @@
 # - Drop in /etc/puppet directory from GitHub
 # - Install Puppetmaster
 
+# 2013.06.13 - apowers
+#   some actions in this script are dead or non-functional.
+#   this script is superceded by boot-puppetmaster.sh
+# DO NOT USE THIS
+# These github repos can probably be deleted:
+# git://github.com/seattle-biomed/etc-puppet.git (basically empty)
+# https://github.com/seattle-biomed/puppet-puppetmaster.git
+
 set -e
 
 cwd=$PWD

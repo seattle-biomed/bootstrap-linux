@@ -1,8 +1,4 @@
-bootstrap-linux
-Copyright 2012, Andrew Leonard, Seattle Biomedical Research Institute
-
-This product includes software developed independently by Andrew Leonard.
-
+Copyright Seattle Biomedical Research Institute
 
 
 

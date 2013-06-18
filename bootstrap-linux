@@ -4,10 +4,11 @@
 # Handles configuration of up to two IP addresses
 
 function banner {
-    echo "Usage (static IP addresses):" 
+    echo
+    echo "Usage (static IP addresses):"
     echo "    $0 [-m] -n fqdn -f eth0_IP [-b eth1_IP] [-p puppetmaster] -r ns1 [-s ns2]"
     echo
-    echo "Usage (DHCP):" 
+    echo "Usage (DHCP):"
     echo "    $0 [-m] -n fqdn -d [-p puppetmaster]"
     echo
     echo "Help:"
@@ -39,29 +40,39 @@ distro=$(cat /etc/issue | head -1 | cut -f1 -d " ")
 hostname=$(echo ${fqdn} | sed 's/\..*$//')
 
 # Check required arguments:
-if [ -z $fqdn ] ; then
-  echo "Please enter a fully-qualified domain name."
-  echo
+if [ `id -u` -ne 0 ] ; then
+  echo "Re-run this script as root - this script modifies key system files."
   banner
+fi
+
+if [ -z $fqdn ] ; then
+  echo "WARNING: No fully-qualified domain name given."
+  fqdn=`hostname --fqdn`
+  if [ "$fqdn" == 'ubuntu' -o "$fqdn" == 'centos' ] ; then
+    echo "ERROR: System has default name and no name provided."
+    banner
+  fi
 fi
 
 if [ -z "$eth0_ip" -a -z "$dhcp" ] ; then
-  echo "Please enter a front-channel IP address or choose -d to enable DHCP."
-  echo
-  banner
-fi
-
-if [ `id -u` -ne 0 ] ; then
-  echo "Re-run this script as root - this script modifies key system files."
-  exit 1
+  echo "WARNING: No front-channel IP address given and DHCP not requested."
+  eth0_ip=`/sbin/ifconfig eth0 2>/dev/null| grep "inet addr" | awk -F: '{print $2}' | awk '{print $1}'`
+  if [ "$eth0_ip" == '' ] ; then
+    echo "ERROR: Could not determine IP address of eth0 and none specified."
+    banner
+  fi
 fi
 
 if [ $distro == 'Ubuntu' -a -z "$ns1" -a -z "$dhcp" ] ; then
-  echo "Primary nameserver required on Ubuntu with static IP addressing."
-  exit 1
+  echo "WARNING: No nameserver provided with static IP address"
+  ns1=`grep nameserver /etc/resolv.conf|awk '{print $2}'`
+  if [ "$ns1" == '' -o "$ns1" == '127.0.0.1' ] ; then
+    echo "ERROR: No nameserver provided and none configured."
+    banner
+  fi
 fi
 
-# We're assuming that the netmask is 255.255.255.0 and the last octet of the
+# We are assuming that the netmask is 255.255.255.0 and the last octet of the
 # gateway is .1.
 
 netmask="255.255.255.0"
@@ -78,7 +89,12 @@ if [ -z "$dhcp" ]; then
   /sbin/ifconfig eth0 inet $eth0_ip netmask 0xffffff00 up
   /bin/ping -c 1 $eth0_gateway 2>&1 > /dev/null
   if [ $? -ne 0 ] ; then
-    echo "Cannot ping default gateway - is system connected to incorrect VLAN?"
+    echo "WARNING: Cannot ping default gateway. Is system connected to incorrect VLAN?"
+#    exit 1
+  fi
+  /bin/ping -c 1 $ns1 2>&1 > /dev/null
+  if [ $? -ne 0 ] ; then
+    echo "ERROR: Cannot ping nameserver. Is $ns1 correct?"
     exit 1
   fi
 fi
@@ -192,9 +208,24 @@ fi
 
 /bin/hostname -F /etc/hostname
 
+PUPPET_URL='http://apt.puppetlabs.com/'
+DISTRIB_CODENAME=`awk -F= '/^DISTRIB_CODENAME/ { print $2 }' /etc/lsb-release`
+PUPPET_REPO="puppetlabs-release-$DISTRIB_CODENAME.deb"
+
 # Install puppet agent:
-/usr/bin/wget -O /tmp/puppetlabs-release-precise.deb http://apt.puppetlabs.com/puppetlabs-release-precise.deb
-/usr/bin/dpkg -i /tmp/puppetlabs-release-precise.deb
+curl --silent ${PUPPET_URL}/pubkey.gpg | apt-key add - > /dev/null
+/usr/bin/wget -O /tmp/$PUPPET_REPO $PUPPET_URL/$PUPPET_REPO
+if [ "$?" != "0" ]
+  echo "ERROR: unable to get $PUPPET_URL/$PUPPET_REPO"
+  exit 1
+fi
+/usr/bin/dpkg -i /tmp/$PUPPET_REPO
+
+# Make apt-get install really really quietly.
+APT_OPTS='-qq -y'
+export DEBIAN_FRONTEND=noninteractive
+echo 'Dpkg::Options{"--force-confdef";"--force-confold";}' >> /etc/apt/apt.conf.d/local
+
 /usr/bin/apt-get update
 /usr/bin/apt-get -y dist-upgrade
 /usr/bin/apt-get -y install puppet
@@ -225,7 +256,7 @@ server = $puppetmaster
 [master]
 # These are needed when the puppetmaster is run by passenger
 # and can safely be removed if webrick is used.
-ssl_client_header = SSL_CLIENT_S_DN 
+ssl_client_header = SSL_CLIENT_S_DN
 ssl_client_verify_header = SSL_CLIENT_VERIFY
 
 EOF
