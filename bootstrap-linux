@@ -39,6 +39,11 @@ done
 distro=$(cat /etc/issue | head -1 | cut -f1 -d " ")
 hostname=$(echo ${fqdn} | sed 's/\..*$//')
 
+PUPPET_URL='http://apt.puppetlabs.com/'
+DISTRIB_CODENAME=`awk -F= '/^DISTRIB_CODENAME/ {print $2}' /etc/lsb-release`
+PUPPET_REPO="puppetlabs-release-$DISTRIB_CODENAME.deb"
+
+
 # Check required arguments:
 if [ `id -u` -ne 0 ] ; then
   echo "Re-run this script as root - this script modifies key system files."
@@ -199,6 +204,17 @@ iface eth1 inet static
 EOF
 fi
 
+# Built a real resolv.conf without dnsmasq
+rm /etc/resolv.conf
+cat > /etc/resolv.conf << EOF
+domain ${domain}
+search ${domain}
+nameserver ${ns1}
+EOF
+if [ ! -z "$ns2" ] ; then
+  echo "nameserver ${ns2}" >> /etc/resolv.conf
+fi
+
 echo $hostname > /etc/hostname
 
 if [ $maintain_ip == 'off' ]; then
@@ -208,30 +224,28 @@ fi
 
 /bin/hostname -F /etc/hostname
 
-PUPPET_URL='http://apt.puppetlabs.com/'
-DISTRIB_CODENAME=`awk -F= '/^DISTRIB_CODENAME/ { print $2 }' /etc/lsb-release`
-PUPPET_REPO="puppetlabs-release-$DISTRIB_CODENAME.deb"
-
-# Install puppet agent:
+# Install puppet
 curl --silent ${PUPPET_URL}/pubkey.gpg | apt-key add - > /dev/null
 /usr/bin/wget -O /tmp/$PUPPET_REPO $PUPPET_URL/$PUPPET_REPO
-if [ "$?" != "0" ]
+if [ "$?" != "0" ]; then
   echo "ERROR: unable to get $PUPPET_URL/$PUPPET_REPO"
   exit 1
 fi
 /usr/bin/dpkg -i /tmp/$PUPPET_REPO
 
-# Make apt-get install really really quietly.
+# Make apt-get install really really silently.
 APT_OPTS='-qq -y'
 export DEBIAN_FRONTEND=noninteractive
 echo 'Dpkg::Options{"--force-confdef";"--force-confold";}' >> /etc/apt/apt.conf.d/local
 
 /usr/bin/apt-get update
-/usr/bin/apt-get -y dist-upgrade
-/usr/bin/apt-get -y install puppet
+/usr/bin/apt-get dist-upgrade
+/usr/bin/apt-get install puppet
 
 # Install additional packages:
-/usr/bin/apt-get -y install git
+/usr/bin/apt-get install git
+
+echo "START=yes" > /etc/default/puppet
 
 ;;
 *)
@@ -243,7 +257,9 @@ exit 1
 esac
 
 if [ ! -z "$puppetmaster" ] ; then
-    cat > /etc/puppet/puppet.conf <<EOF
+  puppetmaster='puppet'
+fi
+cat > /etc/puppet/puppet.conf <<EOF
 [main]
 logdir=/var/log/puppet
 vardir=/var/lib/puppet
@@ -251,16 +267,14 @@ ssldir=/var/lib/puppet/ssl
 rundir=/var/run/puppet
 factpath=\$vardir/lib/facter
 templatedir=\$confdir/templates
-server = $puppetmaster
+server=$puppetmaster
+pluginsync=true
 
 [master]
-# These are needed when the puppetmaster is run by passenger
-# and can safely be removed if webrick is used.
-ssl_client_header = SSL_CLIENT_S_DN
-ssl_client_verify_header = SSL_CLIENT_VERIFY
+
+[agent]
 
 EOF
-fi
 
 # Update /etc/hosts:
 hosts_tmp=$(mktemp)
@@ -269,5 +283,8 @@ echo "127.0.1.1 ${fqdn} ${hostname}" > $hosts_tmp
 grep -v 127.0.1.1 /etc/hosts >> $hosts_tmp
 mv $hosts_tmp /etc/hosts
 
-echo "All done!"
+# Run puppet as a service
+puppet agent
+
+echo "All done! Go sign the host certificate on the puppet master. (May take a few minutes to generate.)"
 ) 2>&1 | /usr/bin/tee /root/bootstrap-linux.log
