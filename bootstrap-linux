@@ -13,6 +13,8 @@ function banner {
     echo
     echo "Help:"
     echo "    $0 -h"
+    echo
+    echo "Hostname and IP address must already be registered in DNS."
     exit 1
 }
 
@@ -43,6 +45,7 @@ PUPPET_URL='http://apt.puppetlabs.com/'
 DISTRIB_CODENAME=`awk -F= '/^DISTRIB_CODENAME/ {print $2}' /etc/lsb-release`
 PUPPET_REPO="puppetlabs-release-$DISTRIB_CODENAME.deb"
 
+[[ -z $puppetmaster ]] && puppetmaster='puppet'
 
 # Check required arguments:
 if [ `id -u` -ne 0 ] ; then
@@ -50,31 +53,34 @@ if [ `id -u` -ne 0 ] ; then
   banner
 fi
 
+if [ $distro == 'Ubuntu' -a -z "$ns1" -a -z "$dhcp" ] ; then
+  echo "INFO: No nameserver provided with static IP address."
+  echo "      Using nameservers from resolv.conf"
+  ns1=`grep nameserver /etc/resolv.conf|awk '{print $2}'`
+  while [ "$ns1" == '' -o "$ns1" == '127.0.0.1' ] ; do
+    echo "WARNING: No nameserver provided."
+    echo -n "Enter nameserver IP address:" ; read ns1
+  done
+fi
+
 if [ -z $fqdn ] ; then
-  echo "WARNING: No fully-qualified domain name given."
+  echo "INFO: No fully-qualified domain name given."
+  echo "      Using current hostname."
   fqdn=`hostname --fqdn`
-  if [ "$fqdn" == 'ubuntu' -o "$fqdn" == 'centos' ] ; then
-    echo "ERROR: System has default name and no name provided."
-    banner
-  fi
+  while [ "$fqdn" == 'ubuntu' -o "$fqdn" == 'centos' ] ; do
+    echo "WARNING: System has default name."
+    echo -n "Enter fully-qualified host name:" ; read fqdn
+  done
 fi
 
 if [ -z "$eth0_ip" -a -z "$dhcp" ] ; then
-  echo "WARNING: No front-channel IP address given and DHCP not requested."
+  echo "INFO: No IP address given and DHCP not requested."
+  echo "      Using IP address configured on eth0."
   eth0_ip=`/sbin/ifconfig eth0 2>/dev/null| grep "inet addr" | awk -F: '{print $2}' | awk '{print $1}'`
-  if [ "$eth0_ip" == '' ] ; then
-    echo "ERROR: Could not determine IP address of eth0 and none specified."
-    banner
-  fi
-fi
-
-if [ $distro == 'Ubuntu' -a -z "$ns1" -a -z "$dhcp" ] ; then
-  echo "WARNING: No nameserver provided with static IP address"
-  ns1=`grep nameserver /etc/resolv.conf|awk '{print $2}'`
-  if [ "$ns1" == '' -o "$ns1" == '127.0.0.1' ] ; then
-    echo "ERROR: No nameserver provided and none configured."
-    banner
-  fi
+  until echo $etho0_ip|egrep '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}'
+    echo "WARNING: Could not determine IP address of eth0."
+    echo -n "Enter host IP address:" ; read eth0_ip
+  done
 fi
 
 # We are assuming that the netmask is 255.255.255.0 and the last octet of the
@@ -94,15 +100,15 @@ if [ -z "$dhcp" ]; then
   /sbin/ifconfig eth0 inet $eth0_ip netmask 0xffffff00 up
   /bin/ping -c 1 $eth0_gateway 2>&1 > /dev/null
   if [ $? -ne 0 ] ; then
-    echo "WARNING: Cannot ping default gateway. Is system connected to incorrect VLAN?"
-#    exit 1
+    echo "ERROR: Cannot ping default gateway ($eth0_gateway)."
+    exit=1
   fi
   /bin/ping -c 1 $ns1 2>&1 > /dev/null
   if [ $? -ne 0 ] ; then
     echo "ERROR: Cannot ping nameserver. Is $ns1 correct?"
-    exit 1
+    exit=1
   fi
-fi
+  if [ $exit ] ; then exit $exit ; fi
 
 # Do distro specific actions:
 
@@ -284,7 +290,9 @@ grep -v 127.0.1.1 /etc/hosts >> $hosts_tmp
 mv $hosts_tmp /etc/hosts
 
 # Run puppet as a service
-puppet agent
 
-echo "All done! Go sign the host certificate on the puppet master. (May take a few minutes to generate.)"
+echo "All done!"
 ) 2>&1 | /usr/bin/tee /root/bootstrap-linux.log
+
+echo "Start puppet 'puppet agent -t'"
+echo "And sign the host certificate on the puppet master."
