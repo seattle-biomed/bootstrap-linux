@@ -78,7 +78,7 @@ if [ -z $fqdn ] ; then
   fqdn=`hostname --fqdn`
   echo $fqdn
   hostname=$(echo $fqdn|awk -F. '{print $1}')
-  while [ "$hostname" == 'ubuntu' -o "$hostname" == 'centos' ] ; do
+  while [ "$hostname" == '' -o "$hostname" == 'ubuntu' -o "$hostname" == 'centos' ] ; do
     echo "WARNING: System has default name."
     echo -n "Enter fully-qualified host name: " ; read fqdn
   done
@@ -107,8 +107,7 @@ if [ -z "$dhcp" ]; then
 
   /bin/ping -c 1 $eth0_gateway 2>&1 > /dev/null
   if [ $? -ne 0 ] ; then
-    echo "ERROR: Cannot ping default gateway ($eth0_gateway)."
-    exit=1
+    echo "WARNING: Cannot ping default gateway ($eth0_gateway)."
   fi
   /bin/ping -c 1 $ns1 2>&1 > /dev/null
   if [ $? -ne 0 ] ; then
@@ -147,8 +146,12 @@ EOF
 fi
 
 # Install Puppet agent:
-/bin/rpm -ivh /tmp/$PUPPET_REPO #http://yum.puppetlabs.com/el/5/products/i386/puppetlabs-release-5-6.noarch.rpm
-/usr/bin/yum -y install puppet
+    PUPPET_URL="http://yum.puppetlabs.com/el/6/products/x86_64";
+#TODO: find a way to automatically detecte this repo name.
+    PUPPET_REPO="puppetlabs-release-6-7.noarch.rpm";
+    /usr/bin/wget -O /tmp/$PUPPET_REPO $PUPPET_URL/$PUPPET_REPO 2>&1 >/dev/null;
+    rpm -ivh /tmp/$PUPPET_REPO
+    /usr/bin/yum -y -q install puppet
 
 }
 
@@ -198,7 +201,7 @@ export DEBIAN_FRONTEND=noninteractive
 echo 'Dpkg::Options{"--force-confdef";"--force-confold";}' >> /etc/apt/apt.conf.d/local
 
 /usr/bin/apt-get $APT_OPTS update
-/usr/bin/apt-get $APT_OPTS dist-upgrade
+#/usr/bin/apt-get $APT_OPTS dist-upgrade
 /usr/bin/apt-get $APT_OPTS install puppet
 
 # echo "START=yes" > /etc/default/puppet
@@ -208,7 +211,7 @@ echo 'Dpkg::Options{"--force-confdef";"--force-confold";}' >> /etc/apt/apt.conf.
 # Do distro specific actions:
 
 hostname $fqdn
-echo $fqdn > /etc/hostname
+#echo $fqdn > /etc/hostname
 
 # Download puppet
 /usr/bin/wget -O /tmp/$PUPPET_REPO $PUPPET_URL/$PUPPET_REPO
