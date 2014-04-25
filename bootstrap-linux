@@ -204,14 +204,21 @@ echo 'Dpkg::Options{"--force-confdef";"--force-confold";}' >> /etc/apt/apt.conf.
 #/usr/bin/apt-get $APT_OPTS dist-upgrade
 /usr/bin/apt-get $APT_OPTS install puppet
 
-# echo "START=yes" > /etc/default/puppet
+echo "START=yes" > /etc/default/puppet
+
+# Regenerate SSH keys if necessary
+/usr/sbin/dpkg-reconfigure openssh-server
+
 }
 
 #=====================================================================
 # Do distro specific actions:
 
 hostname $fqdn
-#echo $fqdn > /etc/hostname
+echo $hostname > /etc/hostname
+
+# Regenerate SSH keys if necessary
+/usr/bin/ssh-keygen -A
 
 # Download puppet
 /usr/bin/wget -O /tmp/$PUPPET_REPO $PUPPET_URL/$PUPPET_REPO
