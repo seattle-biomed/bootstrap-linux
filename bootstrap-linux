@@ -9,13 +9,12 @@
 function banner {
     echo
     echo "Usage (static IP addresses):"
-    echo "    $0 [-k] -n hostname [-d domain] [-f eth0_IP|-d] [-p puppetmaster] -r ns1 [-s ns2]"
+    echo "    $0 [-k] -n fqdn [-f eth0_IP|-d] [-p puppetmaster] -r ns1 [-s ns2]"
     echo
     echo "  -k              : regenerate SSH host keys"
-    echo "  -n hostname     : canonical host name without domain"
-    echo "  -d domain       : domain name for this host"
+    echo "  -n fqdn         : fully-qualifed host name"
     echo "  -f eth0_ip      : IP address for eth0 interface"
-    echo "  -a              : Autoconfigure useing DHCP for eth0"
+    echo "  -d              : use DHCP to configure eth0"
     echo "  -p puppetmaster : name of the puppetmaster, defaults to 'puppet'"
     echo "  -r ns1          : IP address of primary DNS server"
     echo "  -s ns1          : IP address of secondary DNS server"
@@ -36,11 +35,10 @@ while getopts "hdmkp:n:f:b:r:s:" flag
 do
   case $flag in
     b) eth1_ip=$OPTARG ;;
-    a) dhcp=1 ;;
+    d) dhcp=1 ;;
     f) eth0_ip=$OPTARG ;;
     k) ssh_keygen=1;;
-    n) hostname=$OPTARG ;;
-    d) domain=$OPTARG ;;
+    n) fqdn=$OPTARG ;;
     p) puppetmaster=$OPTARG ;;
     r) ns1=$OPTARG ;;
     s) ns2=$OPTARG ;;
@@ -49,6 +47,7 @@ do
 done
 
 distro=$(cat /etc/issue | head -1 | cut -f1 -d " ")
+hostname=$(echo $fqdn|awk -F. '{print $1}')
 
 PUPPET_URL='http://apt.puppetlabs.com/'
 DISTRIB_CODENAME=`awk -F= '/^DISTRIB_CODENAME/ {print $2}' /etc/lsb-release`
@@ -68,18 +67,21 @@ if [ $distro == 'Ubuntu' -a -z "$ns1" -a -z "$dhcp" ] ; then
   ns1=`grep nameserver /etc/resolv.conf|head -n1|awk '{print $2}'`
   echo $ns1
   while [ "$ns1" == '' -o "$ns1" == '127.0.0.1' ] ; do
-    echo "ERROR: No nameserver provided."
+    echo "WARNING: No nameserver provided."
     echo -n "Enter nameserver IP address: " ; read ns1
   done
 fi
 
-if [ -z $hostname ] ; then
-  echo "INFO: No canonical hostname given."
+if [ -z $fqdn ] ; then
+  echo "INFO: No fully-qualified domain name given."
   echo -n "      Using current hostname: "
-  echo $hostname
+  fqdn=`hostname --fqdn`
+  echo $fqdn
+  hostname=$(echo $fqdn|awk -F. '{print $1}')
   while [ "$hostname" == '' -o "$hostname" == 'ubuntu' -o "$hostname" == 'centos' ] ; do
-    echo "ERROR: System has a default name."
-    echo -n "Enter fully-qualified host name: " ; read hostname
+    echo "WARNING: System has default name."
+    echo -n "Enter fully-qualified host name: " ; read fqdn
+    hostname=$(echo $fqdn|awk -F. '{print $1}')
   done
 fi
 
@@ -91,7 +93,7 @@ if [ -z "$eth0_ip" -a -z "$dhcp" ] ; then
 # The 250 address is reserved for build templates
   if echo $eth0_ip|egrep -q '\.250$' ; then eth0_ip='' ; fi
   until echo $eth0_ip|egrep -q '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' ; do
-    echo "ERROR: Invalid IP address for eth0."
+    echo "WARNING: Invalid IP address for eth0."
     echo -n "Enter host IP address or 'dhcp': " ; read eth0_ip
     if [ "$eth0_ip" == 'dhcp' ] ; then dhcp=1 ; break ; fi
   done
@@ -111,7 +113,6 @@ if [ -z "$dhcp" ]; then
   /bin/ping -c 1 $ns1 2>&1 > /dev/null
   if [ $? -ne 0 ] ; then
     echo "ERROR: Cannot ping nameserver. Is $ns1 correct?"
-    echo "Exiting."
     exit=1
   fi
   if [ $exit ] ; then exit $exit ; fi
@@ -124,7 +125,7 @@ function build_centos {
 cat > /etc/sysconfig/network <<EOF
 NETWORKING=yes
 NETWORKING_IPV6=yes
-HOSTNAME=${hostname}
+HOSTNAME=${fqdn}
 GATEWAY=${eth0_gateway}
 EOF
 
@@ -180,7 +181,7 @@ EOF
 fi
 
 # Built a real resolv.conf without dnsmasq
-[[ -z ${domain} ]] && domain=`host ${ns1} | sed 's/^[^.]*\.//'`
+domain=`echo ${fqdn} | sed 's/^[^.]*\.//'`
 rm /etc/resolv.conf
 cat > /etc/resolv.conf << EOF
 domain ${domain}
@@ -214,8 +215,8 @@ echo "START=yes" > /etc/default/puppet
 #=====================================================================
 # Do distro specific actions:
 
-hostname $hostname
-echo $hostname > /etc/hostname
+hostname $fqdn
+echo $fqdn > /etc/hostname
 
 # Regenerate SSH keys if necessary
 /usr/bin/ssh-keygen -A
@@ -258,15 +259,8 @@ pluginsync=true
 
 EOF
 
-# Update /etc/hosts:
-hosts_tmp=$(mktemp)
-chmod 644 $hosts_tmp
-echo "127.0.1.1 ${hostname} ${hostname}" > $hosts_tmp
-grep -v 127.0.1.1 /etc/hosts >> $hosts_tmp
-mv $hosts_tmp /etc/hosts
-
 # Run puppet as a service
 
 echo "All done!"
-echo "Start puppet: 'puppet agent -t'"
-echo "And sign the host certificate on the puppet master."
+echo "Reboot to finish."
+echo "You may also need to sign the host certificate on the puppet master."
